@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://zwitjkrmzkvrektahuml.supabase.co 'self'; img-src https://zwitjkrmzkvrektahuml.supabase.co blob: data:; media-src https://zwitjkrmzkvrektahuml.supabase.co blob:; base-uri 'none'; form-action 'none'">
+<title>DayCasion Legacy</title>
+<!-- Frame guard: GitHub Pages can't send X-Frame-Options, so the page stays hidden unless it is the top window. -->
+<style id="dc-frame-guard">html { display: none !important; }</style>
+<style>
+  :root { --bg:#f7f4ef; --card:#ffffff; --text:#1f1d1a; --muted:#6b655d; --line:#e6e0d6; --accent:#8a6d3b; --err:#a3312a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161513; --card:#201e1b; --text:#f1ece4; --muted:#a59d92; --line:#34302a; --accent:#d2b07a; --err:#e07a72; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  .brand { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 32px; line-height: 1.25; margin: 6px 0 4px; }
+  h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 24px; margin: 0 0 12px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-top: 20px; }
+  .eulogy p { font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.75; margin: 0 0 1em; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button, .btn { appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 15px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 16px; }
+  .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .memory { border-top: 1px solid var(--line); padding: 16px 0; }
+  .memory:first-child { border-top: 0; }
+  .memory .body { white-space: pre-wrap; margin: 4px 0 0; }
+  .media { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+  .media img, .media video { width: 100%; border-radius: 10px; display: block; background: var(--line); }
+  .media img { aspect-ratio: 4/3; object-fit: cover; cursor: zoom-in; }
+  .media audio { width: 100%; grid-column: 1 / -1; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  input[type=email] { width: 100%; max-width: 360px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+  .err { color: var(--err); }
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+  .hidden { display: none !important; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; }
+  dt { color: var(--muted); } dd { margin: 0; }
+  @media print { .no-print { display: none !important; } body { background: #fff; color: #000; } .card { border: 0; padding: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">DayCasion · Legacy</div>
+  <div id="status" class="card"><p class="muted">Opening…</p></div>
+  <div id="content" class="hidden">
+    <h1 id="title"></h1>
+    <p class="muted" id="subtitle"></p>
+    <section class="card eulogy" id="eulogy"></section>
+    <section class="card hidden" id="materials">
+      <h2>Shared memories</h2>
+      <p class="muted">Read-only. Shared by <span id="owner-name"></span> with you alone.</p>
+      <div class="chips no-print" id="profiles"></div>
+      <div class="tabs no-print" id="tabs"></div>
+      <div id="panel"></div>
+      <div class="row no-print"><button id="more" class="hidden">Load more</button></div>
+    </section>
+    <p class="muted no-print" id="expiry" style="margin-top:20px"></p>
+  </div>
+</main>
+<script>
+(() => {
+  "use strict";
+  // Never show inside another site's frame (clickjacking); stay hidden and move to the top window without the link token.
+  if (window.top !== window.self) {
+    try { window.top.location.replace(location.origin + location.pathname); } catch (_) {}
+    return;
+  }
+  document.getElementById("dc-frame-guard").remove();
+  const API = location.pathname.includes("/functions/v1/legacy-access")
+    ? location.origin + "/functions/v1/legacy-access"
+    : "https://zwitjkrmzkvrektahuml.supabase.co/functions/v1/legacy-access";
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "text") n.textContent = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+    }
+    for (const k of kids) if (k) n.append(k);
+    return n;
+  };
+  // The link's token is in the address fragment (never sent to any server log); keep it for this tab only.
+  let token = "";
+  const m = location.hash.match(/(?:^#|&)t=([0-9a-f]{64})/);
+  if (m) { token = m[1]; try { sessionStorage.setItem("dcLegacyToken", token); } catch (_) {} history.replaceState(null, "", location.pathname + location.search); }
+  else { try { token = sessionStorage.getItem("dcLegacyToken") || ""; } catch (_) {} }
+
+  async function call(action, extra = {}) {
+    const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, token, ...extra }) });
+    let data = null; try { data = await res.json(); } catch (_) {}
+    if (!res.ok) { const e = new Error((data && data.error) || "unavailable"); e.code = (data && data.error) || "unavailable"; throw e; }
+    return data;
+  }
+  function status(...nodes) { $("content").classList.add("hidden"); const s = $("status"); s.classList.remove("hidden"); s.replaceChildren(...nodes); }
+  function longDate(iso) { try { return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); } catch (_) { return ""; } }
+
+  function renewForm(message, withToken) {
+    const note = el("p", { class: "muted", text: "" });
+    const parts = [el("h2", { text: message.title }), el("p", { text: message.body })];
+    if (withToken) {
+      const b = el("button", { class: "primary", text: "Email me a new link", onclick: async () => {
+        b.disabled = true;
+        try { await call("renew"); note.textContent = "If this link belongs to you, a new one is on its way to your email."; } catch (_) { note.textContent = "Something went wrong. Please try again later."; b.disabled = false; }
+      } });
+      parts.push(el("div", { class: "row" }, b));
+    } else {
+      const input = el("input", { type: "email", placeholder: "Your email address", autocomplete: "email", "aria-label": "Your email address" });
+      const b = el("button", { class: "primary", text: "Send me a link", onclick: async () => {
+        b.disabled = true;
+        try { await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "renew_email", email: input.value }) });
+              note.textContent = "If that address belongs to a Legacy Executor, a new link is on its way."; } catch (_) { note.textContent = "Something went wrong. Please try again later."; }
+        b.disabled = false;
+      } });
+      parts.push(el("div", { class: "row" }, input, b));
+    }
+    parts.push(note);
+    status(...parts);
+  }
+
+  function showEulogy(d) {
+    const box = $("eulogy");
+    const e = d.eulogy || {};
+    if (e.status === "ready" && e.paragraphs && e.paragraphs.length) {
+      const download = el("button", { text: "Download", onclick: async () => {
+        try {
+          const r = await call("eulogy_download");
+          const url = URL.createObjectURL(new Blob([r.text], { type: "text/plain;charset=utf-8" }));
+          const a = el("a", { href: url, download: r.filename }); document.body.append(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        } catch (err) { handle(err); }
+      } });
+      const print = el("button", { text: "Print", onclick: () => window.print() });
+      box.replaceChildren(el("h2", { text: e.title || "Eulogy" }), ...e.paragraphs.map((p) => el("p", { text: p.text })),
+        el("div", { class: "row no-print" }, download, print),
+        el("p", { class: "muted", text: "Written with AI from " + d.subject_name + "'s own saved memories and Life Story, at their request." }));
+    } else if (e.status === "not_authorized") {
+      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: d.subject_name + " did not choose to have a eulogy written, so none was prepared." }));
+    } else if (e.status === "no_material") {
+      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: "There weren't enough saved memories to prepare a eulogy." }));
+    } else {
+      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { class: "muted", text: "The eulogy isn't available yet. Please check back later." }));
+    }
+  }
+
+  let current = { profile: null, tab: null, offset: 0 };
+  function setupMaterials(d) {
+    if (d.access_level !== "full_access" || !d.profiles.length) return;
+    $("materials").classList.remove("hidden");
+    $("owner-name").textContent = d.subject_name;
+    const tabs = [];
+    if (d.materials.some((x) => ["memories", "photos", "videos", "voice"].includes(x))) tabs.push(["memories", "Memories"]);
+    if (d.materials.includes("life_story")) tabs.push(["life_story", "Life Story"]);
+    const chips = d.profiles.map((p) => el("button", { class: "chip", "aria-pressed": "false", text: p.name || "Profile", onclick: () => select(p.id, current.tab) }));
+    $("profiles").replaceChildren(...chips);
+    $("profiles").dataset.ids = d.profiles.map((p) => p.id).join(",");
+    $("tabs").replaceChildren(...tabs.map(([k, label]) => el("button", { class: "chip", "data-tab": k, "aria-pressed": "false", text: label, onclick: () => select(current.profile, k) })));
+    if (tabs.length < 2) $("tabs").classList.add("hidden");
+    select(d.profiles[0].id, tabs[0] ? tabs[0][0] : null);
+  }
+  function select(profile, tab) {
+    current = { profile, tab, offset: 0 };
+    const ids = ($("profiles").dataset.ids || "").split(",");
+    [...$("profiles").children].forEach((c, i) => c.setAttribute("aria-pressed", String(ids[i] === profile)));
+    [...$("tabs").children].forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.tab === tab)));
+    $("panel").replaceChildren(el("p", { class: "muted", text: "Loading…" }));
+    $("more").classList.add("hidden");
+    if (tab === "life_story") loadLifeStory(); else if (tab) loadMemories(true);
+  }
+  function mediaNode(x) {
+    if (x.kind === "photo") return el("img", { src: x.preview, alt: "Photo", loading: "lazy", onclick: () => {
+      const lb = el("div", { class: "lightbox", onclick: () => lb.remove() }, el("img", { src: x.url, alt: "Photo" })); document.body.append(lb); } });
+    if (x.kind === "video") return el("video", { src: x.url, controls: "", preload: "metadata", playsinline: "" });
+    if (x.kind === "audio") return el("audio", { src: x.url, controls: "", preload: "none" });
+    return null;
+  }
+  async function loadMemories(first) {
+    try {
+      const r = await call("memories", { profile_id: current.profile, offset: current.offset });
+      const items = r.items.map((it) => {
+        const media = it.media.map(mediaNode).filter(Boolean);
+        return el("article", { class: "memory" },
+          it.date ? el("div", { class: "muted", text: it.date }) : null,
+          it.title ? el("h3", { text: it.title }) : null,
+          it.body ? el("p", { class: "body", text: it.body }) : null,
+          media.length ? el("div", { class: "media" }, ...media) : null);
+      });
+      if (first) $("panel").replaceChildren(...(items.length ? items : [el("p", { class: "muted", text: "Nothing has been shared from this profile." })]));
+      else $("panel").append(...items);
+      current.offset = r.next_offset || 0;
+      const more = $("more");
+      more.classList.toggle("hidden", r.next_offset == null);
+      more.onclick = () => loadMemories(false);
+    } catch (err) { handle(err); }
+  }
+  async function loadLifeStory() {
+    try {
+      const r = await call("life_story", { profile_id: current.profile });
+      const ls = r.life_story;
+      if (!ls) { $("panel").replaceChildren(el("p", { class: "muted", text: "There is no Life Story for this profile." })); return; }
+      const facts = [["Name", ls.full_name], ["Known as", ls.preferred_name], ["Relationship", ls.relationship], ["Born", ls.born], ["Birthplace", ls.birthplace],
+                     ...ls.details.map((x) => [x.label.charAt(0).toUpperCase() + x.label.slice(1), x.value])].filter(([, v]) => v);
+      const dl = el("dl", {}, ...facts.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
+      const chapters = ls.chapters.map((c) => el("article", { class: "memory" }, el("h3", { text: c.title }),
+        el("div", { class: "muted", text: c.memory_count + (c.memory_count === 1 ? " memory" : " memories") }),
+        c.memories ? el("ul", {}, ...c.memories.map((m) => el("li", { text: (m.date ? m.date + " · " : "") + (m.title || "Untitled memory") }))) : null));
+      $("panel").replaceChildren(dl, ...chapters);
+    } catch (err) { handle(err); }
+  }
+
+  function handle(err) {
+    if (err.code === "link_expired") return renewForm({ title: "This link has expired", body: "For your security, legacy links expire. We can email a new one to the address on file." }, true);
+    if (err.code === "invalid_link") return renewForm({ title: "This link isn't valid", body: "If you are a DayCasion Legacy Executor, enter your email address and we'll send you a new link." }, false);
+    status(el("p", { class: "err", text: "Something went wrong. Please refresh the page or try again later." }));
+  }
+
+  async function start() {
+    if (!token) return renewForm({ title: "Open your legacy link", body: "Use the private link in your email from DayCasion. If you've lost it, enter your email address and we'll send a new one." }, false);
+    try {
+      const d = await call("overview");
+      $("status").classList.add("hidden");
+      $("content").classList.remove("hidden");
+      $("title").textContent = "In memory of " + d.subject_name;
+      $("subtitle").textContent = d.access_level === "full_access"
+        ? "A eulogy and memories shared with you by " + d.subject_name + "."
+        : "A eulogy shared with you by " + d.subject_name + ".";
+      document.title = "In memory of " + d.subject_name;
+      showEulogy(d);
+      setupMaterials(d);
+      $("expiry").textContent = "This private link is for you alone. It expires on " + longDate(d.link_expires_at) + "; you can request a new link any time.";
+    } catch (err) { handle(err); }
+  }
+  start();
+})();
+</script>
+</body>
+</html>
