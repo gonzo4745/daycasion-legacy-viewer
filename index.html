@@ -35,6 +35,13 @@
   .media img, .media video { width: 100%; border-radius: 10px; display: block; background: var(--line); }
   .media img { aspect-ratio: 4/3; object-fit: cover; cursor: zoom-in; }
   .media audio { width: 100%; grid-column: 1 / -1; }
+  .media .item { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .media .item.wide { grid-column: 1 / -1; }
+  button.small { padding: 5px 12px; font-size: 13px; align-self: flex-start; }
+  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 10px 0; }
+  .progress > div { height: 100%; background: var(--accent); width: 0; }
+  ul.parts { list-style: none; padding: 0; margin: 10px 0; }
+  ul.parts li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
   .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
   input[type=email] { width: 100%; max-width: 360px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
   .err { color: var(--err); }
@@ -61,6 +68,11 @@
       <div class="tabs no-print" id="tabs"></div>
       <div id="panel"></div>
       <div class="row no-print"><button id="more" class="hidden">Load more</button></div>
+    </section>
+    <section class="card hidden no-print" id="everything">
+      <h2>Download Everything Shared</h2>
+      <p class="muted">One download (a ZIP file, in several parts if it's large) of everything <span id="ev-name"></span> shared with you: the memories, photos, videos, recordings and Life Stories you can see here.</p>
+      <div id="ev-body"><p class="muted">Loading…</p></div>
     </section>
     <p class="muted no-print" id="expiry" style="margin-top:20px"></p>
   </div>
@@ -139,9 +151,9 @@
       const print = el("button", { text: "Print", onclick: () => window.print() });
       box.replaceChildren(el("h2", { text: e.title || "Eulogy" }), ...e.paragraphs.map((p) => el("p", { text: p.text })),
         el("div", { class: "row no-print" }, download, print),
-        el("p", { class: "muted", text: "Written with AI from " + d.subject_name + "'s own saved memories and Life Story, at their request." }));
+        el("p", { class: "muted", text: "This eulogy was thoughtfully written using AI, based on the memories and Life Stories " + d.subject_name + " shared in DayCasion." }));
     } else if (e.status === "not_authorized") {
-      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: d.subject_name + " did not choose to have a eulogy written, so none was prepared." }));
+      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: d.subject_name + " did not include a eulogy." }));
     } else if (e.status === "no_material") {
       box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: "There weren't enough saved memories to prepare a eulogy." }));
     } else {
@@ -173,23 +185,46 @@
     $("more").classList.add("hidden");
     if (tab === "life_story") loadLifeStory(); else if (tab) loadMemories(true);
   }
+  // Every download asks the server again (the private link, the owner's sharing choices and the file are re-checked).
+  function startDownload(url) { const a = el("a", { href: url, rel: "noopener" }); document.body.append(a); a.click(); a.remove(); }
+  function saveText(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = el("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  function downloadButton(mediaId) {
+    const b = el("button", { class: "small no-print", text: "Download", onclick: async () => {
+      b.disabled = true;
+      try { const r = await call("media_download", { media_id: mediaId }); startDownload(r.url); }
+      catch (err) { if (err.code === "link_expired" || err.code === "invalid_link") return handle(err); b.textContent = "Not available"; return; }
+      b.disabled = false;
+    } });
+    return b;
+  }
   function mediaNode(x) {
-    if (x.kind === "photo") return el("img", { src: x.preview, alt: "Photo", loading: "lazy", onclick: () => {
+    let n = null;
+    if (x.kind === "photo") n = el("img", { src: x.preview, alt: "Photo", loading: "lazy", onclick: () => {
       const lb = el("div", { class: "lightbox", onclick: () => lb.remove() }, el("img", { src: x.url, alt: "Photo" })); document.body.append(lb); } });
-    if (x.kind === "video") return el("video", { src: x.url, controls: "", preload: "metadata", playsinline: "" });
-    if (x.kind === "audio") return el("audio", { src: x.url, controls: "", preload: "none" });
-    return null;
+    else if (x.kind === "video") n = el("video", { src: x.url, controls: "", preload: "metadata", playsinline: "" });
+    else if (x.kind === "audio") n = el("audio", { src: x.url, controls: "", preload: "none" });
+    if (!n) return null;
+    return el("div", { class: "item" + (x.kind === "audio" ? " wide" : "") }, n, x.id ? downloadButton(x.id) : null);
   }
   async function loadMemories(first) {
     try {
       const r = await call("memories", { profile_id: current.profile, offset: current.offset });
       const items = r.items.map((it) => {
         const media = it.media.map(mediaNode).filter(Boolean);
+        const textButton = (it.title || it.body) ? el("button", { class: "small no-print", text: "Download text", onclick: () => {
+          const name = ((it.date || "Undated") + " - " + (it.title || "Memory")).replace(/[^\p{L}\p{N} .,'-]/gu, "").slice(0, 80).trim() + ".txt";
+          saveText(name, [it.title || "", it.date || "", "", it.body || ""].join("\n").trim() + "\n");
+        } }) : null;
         return el("article", { class: "memory" },
           it.date ? el("div", { class: "muted", text: it.date }) : null,
           it.title ? el("h3", { text: it.title }) : null,
           it.body ? el("p", { class: "body", text: it.body }) : null,
-          media.length ? el("div", { class: "media" }, ...media) : null);
+          media.length ? el("div", { class: "media" }, ...media) : null,
+          textButton ? el("div", { class: "row", style: "margin-top:8px" }, textButton) : null);
       });
       if (first) $("panel").replaceChildren(...(items.length ? items : [el("p", { class: "muted", text: "Nothing has been shared from this profile." })]));
       else $("panel").append(...items);
@@ -214,6 +249,63 @@
     } catch (err) { handle(err); }
   }
 
+  // ---- Download Everything Shared ----
+  function sizeText(b) { b = Number(b) || 0; if (b >= 1073741824) return (b / 1073741824).toFixed(1) + " GB"; if (b >= 1048576) return Math.round(b / 1048576) + " MB"; return Math.max(1, Math.ceil(b / 1024)) + " KB"; }
+  let evTimer = null;
+  function setupEverything(d) {
+    if (d.access_level !== "full_access" || !d.profiles.length) return;
+    $("everything").classList.remove("hidden");
+    $("ev-name").textContent = d.subject_name;
+    loadEverything();
+  }
+  async function loadEverything() {
+    clearTimeout(evTimer);
+    let r;
+    try { r = await call("export_status"); } catch (err) { if (err.code === "link_expired" || err.code === "invalid_link") return handle(err);
+      $("ev-body").replaceChildren(el("p", { class: "err", text: "This isn't available right now. Please try again later." })); return; }
+    const x = r.export; const nodes = [];
+    const note = el("p", { class: "err" });
+    const requestButton = (label) => el("button", { class: "primary", text: label, onclick: async (ev) => {
+      ev.target.disabled = true; note.textContent = "";
+      try { await call("export_request"); loadEverything(); }
+      catch (err) { if (err.code === "link_expired" || err.code === "invalid_link") return handle(err);
+        ev.target.disabled = false; note.textContent = err.code === "export_limit" ? "You've reached the limit of downloads for now. Please try again later." : "That didn't work. Please try again later."; }
+    } });
+    if (x && (x.status === "queued" || x.status === "processing")) {
+      const p = x.progress || {}; const ft = Number(p.files_total) || 0, fd = Number(p.files_done) || 0, bt = Number(p.bytes_total) || 0, bd = Number(p.bytes_done) || 0;
+      const frac = p.phase === "verifying" ? 1 : bt > 0 ? bd / bt : ft > 0 ? fd / ft : 0;
+      nodes.push(el("p", { text: x.status === "queued" && x.attempts > 0 ? "We hit a temporary problem and will try again automatically. Anything already prepared is kept."
+        : x.status === "queued" ? "Getting ready to start. Large downloads can take a few hours."
+        : ft > 0 ? "Preparing " + fd.toLocaleString() + " of " + ft.toLocaleString() + " files…" : "Preparing your download…" }));
+      const bar = el("div", { class: "progress" }, el("div")); bar.firstChild.style.width = Math.max(2, Math.round(frac * 100)) + "%"; nodes.push(bar);
+      nodes.push(el("p", { class: "muted", text: "We'll email you when it's ready, so you don't need to keep this page open." }));
+      evTimer = setTimeout(loadEverything, 30000);
+    } else if (x && x.status === "ready") {
+      const n = x.parts.length;
+      nodes.push(el("p", { text: "Ready · " + sizeText(x.total_bytes) + (n > 1 ? " in " + n + " parts" : "") + " · available until " + longDate(x.expires_at) }));
+      nodes.push(el("ul", { class: "parts" }, ...x.parts.map((p) => {
+        const b = el("button", { class: "primary", text: n > 1 ? "Download part " + p.part : "Download", onclick: async () => {
+          b.disabled = true;
+          try { const r2 = await call("export_part_link", { job_id: x.job_id, part: p.part }); startDownload(r2.url); }
+          catch (err) { if (err.code === "link_expired" || err.code === "invalid_link") return handle(err); note.textContent = "This file isn't available any more. Refresh the page to check."; }
+          b.disabled = false;
+        } });
+        return el("li", {}, el("span", { text: (n > 1 ? "Part " + p.part + " of " + n : "Your download") + " · " + sizeText(p.bytes) }), b);
+      })));
+      nodes.push(el("p", { class: "muted", text: (n > 1 ? "Download every part and extract them all into the same folder, then open index.html in a web browser on your computer."
+        : "Extract the ZIP file, then open index.html in a web browser on your computer.")
+        + " We recommend a computer for large downloads. For privacy, this download is deleted after 7 days." }));
+    } else {
+      if (x && x.status === "expired") nodes.push(el("p", { class: "muted", text: "Your last download has expired and was deleted for privacy." }));
+      if (x && x.status === "failed") nodes.push(el("p", { class: "err", text: "We couldn't prepare your last download. Our support team has been alerted." }));
+      if (r.can_request) nodes.push(el("div", { class: "row" }, requestButton(x ? "Prepare a new download" : "Prepare my download")));
+      else if (r.next_request_at) nodes.push(el("p", { class: "muted", text: "You can request up to " + r.requests_allowed + " downloads every 30 days. You can request another on " + longDate(r.next_request_at) + "." }));
+      nodes.push(el("p", { class: "muted", text: "We'll prepare it and email you when it's ready. Large downloads can take a few hours." }));
+    }
+    nodes.push(note);
+    $("ev-body").replaceChildren(...nodes);
+  }
+
   function handle(err) {
     if (err.code === "link_expired") return renewForm({ title: "This link has expired", body: "For your security, legacy links expire. We can email a new one to the address on file." }, true);
     if (err.code === "invalid_link") return renewForm({ title: "This link isn't valid", body: "If you are a DayCasion Legacy Executor, enter your email address and we'll send you a new link." }, false);
@@ -227,12 +319,16 @@
       $("status").classList.add("hidden");
       $("content").classList.remove("hidden");
       $("title").textContent = "In memory of " + d.subject_name;
-      $("subtitle").textContent = d.access_level === "full_access"
-        ? "A eulogy and memories shared with you by " + d.subject_name + "."
-        : "A eulogy shared with you by " + d.subject_name + ".";
+      const hasEulogy = d.eulogy && d.eulogy.status === "ready";
+      const full = d.access_level === "full_access" && d.profiles.length;
+      $("subtitle").textContent = hasEulogy && full ? "A eulogy and memories shared with you by " + d.subject_name + "."
+        : full ? "Memories shared with you by " + d.subject_name + "."
+        : hasEulogy ? "A eulogy shared with you by " + d.subject_name + "."
+        : d.subject_name + " named you as their DayCasion Legacy Executor.";
       document.title = "In memory of " + d.subject_name;
       showEulogy(d);
       setupMaterials(d);
+      setupEverything(d);
       $("expiry").textContent = "This private link is for you alone. It expires on " + longDate(d.link_expires_at) + "; you can request a new link any time.";
     } catch (err) { handle(err); }
   }
