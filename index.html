@@ -22,6 +22,7 @@
   .muted { color: var(--muted); font-size: 14px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-top: 20px; }
   .eulogy p { font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.75; margin: 0 0 1em; }
+  .eulogy .own { font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.75; margin: 0 0 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   button, .btn { appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 15px; cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -139,23 +140,34 @@
   function showEulogy(d) {
     const box = $("eulogy");
     const e = d.eulogy || {};
-    if (e.status === "ready" && e.paragraphs && e.paragraphs.length) {
-      const download = el("button", { text: "Download", onclick: async () => {
-        try {
-          const r = await call("eulogy_download");
-          const url = URL.createObjectURL(new Blob([r.text], { type: "text/plain;charset=utf-8" }));
-          const a = el("a", { href: url, download: r.filename }); document.body.append(a); a.click(); a.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-        } catch (err) { handle(err); }
+    const textButton = (label) => el("button", { text: label, onclick: async () => {
+      try {
+        const r = await call("eulogy_download");
+        const url = URL.createObjectURL(new Blob([r.text], { type: "text/plain;charset=utf-8" }));
+        const a = el("a", { href: url, download: r.filename }); document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (err) { handle(err); }
+    } });
+    const print = el("button", { text: "Print", onclick: () => window.print() });
+    if (e.status === "ready" && e.kind === "completed") {
+      // The owner's own finished eulogy, exactly as they wrote it (no AI), with their original document.
+      const kinds = { pdf: "PDF", docx: "Word document", txt: "text file" };
+      const original = el("button", { class: "primary", text: "Download the original " + (kinds[(e.document || {}).type] || "document"), onclick: async () => {
+        try { const r = await call("eulogy_document"); startDownload(r.url); } catch (err) { handle(err); }
       } });
-      const print = el("button", { text: "Print", onclick: () => window.print() });
+      const text = e.text_available && e.paragraphs && e.paragraphs.length ? e.paragraphs.map((p) => p.text).join("\n\n") : "";
+      box.replaceChildren(el("h2", { text: "Eulogy" }),
+        text ? el("div", { class: "own", text: text }) : el("p", { text: d.subject_name + " wrote their own eulogy. It is in the document below." }),
+        el("div", { class: "row no-print" }, original, text ? textButton("Download as text") : null, text ? print : null),
+        el("p", { class: "muted", text: "These are " + d.subject_name + "'s own words, exactly as they wrote them." }));
+    } else if (e.status === "ready" && e.paragraphs && e.paragraphs.length) {
       box.replaceChildren(el("h2", { text: e.title || "Eulogy" }), ...e.paragraphs.map((p) => el("p", { text: p.text })),
-        el("div", { class: "row no-print" }, download, print),
-        el("p", { class: "muted", text: "This eulogy was thoughtfully written using AI, based on the memories and Life Stories " + d.subject_name + " shared in DayCasion." }));
+        el("div", { class: "row no-print" }, textButton("Download"), print),
+        el("p", { class: "muted", text: "This eulogy was thoughtfully written using AI, based only on what " + d.subject_name + " chose to share with DayCasion." }));
     } else if (e.status === "not_authorized") {
       box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: d.subject_name + " did not include a eulogy." }));
     } else if (e.status === "no_material") {
-      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: "There weren't enough saved memories to prepare a eulogy." }));
+      box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: "There wasn't enough information to prepare a eulogy." }));
     } else {
       box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { class: "muted", text: "The eulogy isn't available yet. Please check back later." }));
     }
