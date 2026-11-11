@@ -22,6 +22,7 @@
   .muted { color: var(--muted); font-size: 14px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-top: 20px; }
   .eulogy p { font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.75; margin: 0 0 1em; }
+  #video-eulogy video { width: 100%; max-height: 70vh; border-radius: 12px; background: #000; display: block; margin: 8px 0 12px; }
   .eulogy .own { font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.75; margin: 0 0 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   button, .btn { appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 15px; cursor: pointer; }
@@ -62,6 +63,7 @@
     <h1 id="title"></h1>
     <p class="muted" id="subtitle"></p>
     <section class="card eulogy" id="eulogy"></section>
+    <section class="card hidden" id="video-eulogy"></section>
     <section class="card hidden" id="materials">
       <h2>Shared memories</h2>
       <p class="muted">Read-only. Shared by <span id="owner-name"></span> with you alone.</p>
@@ -164,6 +166,8 @@
       box.replaceChildren(el("h2", { text: e.title || "Eulogy" }), ...e.paragraphs.map((p) => el("p", { text: p.text })),
         el("div", { class: "row no-print" }, textButton("Download"), print),
         el("p", { class: "muted", text: "This eulogy was thoughtfully written using AI, based only on what " + d.subject_name + " chose to share with DayCasion." }));
+    } else if (e.status === "not_authorized" && d.video) {
+      box.classList.add("hidden"); // only a video eulogy (shown below)
     } else if (e.status === "not_authorized") {
       box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { text: d.subject_name + " did not include a eulogy." }));
     } else if (e.status === "no_material") {
@@ -171,6 +175,30 @@
     } else {
       box.replaceChildren(el("h2", { text: "Eulogy" }), el("p", { class: "muted", text: "The eulogy isn't available yet. Please check back later." }));
     }
+  }
+
+  // ---- Video eulogy (the owner's own recording, exactly as uploaded; streamed, so playback starts at once)
+  function clock(s) { s = Math.round(Number(s) || 0); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(r).padStart(2, "0"); }
+  function showVideo(d) {
+    if (!d.video) return;
+    const box = $("video-eulogy"); box.classList.remove("hidden");
+    const player = el("video", { controls: "", preload: "metadata", playsinline: "", "aria-label": "Video eulogy" });
+    const note = el("p", { class: "err" });
+    call("eulogy_video").then((r) => { player.src = r.url; }).catch((err) => {
+      if (err.code === "link_expired" || err.code === "invalid_link") return handle(err);
+      note.textContent = "The video isn't available right now. Please refresh the page or try again later."; });
+    const dl = el("button", { text: "Download video", onclick: async () => {
+      dl.disabled = true;
+      try { const r = await call("eulogy_video", { download: true }); startDownload(r.url); }
+      catch (err) { if (err.code === "link_expired" || err.code === "invalid_link") return handle(err); note.textContent = "The download isn't available right now. Please try again later."; }
+      dl.disabled = false;
+    } });
+    const facts = [d.video.duration_seconds ? clock(d.video.duration_seconds) : null, d.video.size_bytes ? sizeText(d.video.size_bytes) : null].filter(Boolean).join(" · ");
+    box.replaceChildren(el("h2", { text: "Video eulogy" }),
+      el("p", { class: "muted", text: d.subject_name + " recorded this video for you." + (facts ? " " + facts + "." : "") }),
+      player, el("div", { class: "row no-print" }, dl), note,
+      el("p", { class: "muted", text: "This is " + d.subject_name + "'s own video, exactly as they uploaded it. Large videos download best on a computer." }));
   }
 
   let current = { profile: null, tab: null, offset: 0 };
@@ -331,7 +359,7 @@
       $("status").classList.add("hidden");
       $("content").classList.remove("hidden");
       $("title").textContent = "In memory of " + d.subject_name;
-      const hasEulogy = d.eulogy && d.eulogy.status === "ready";
+      const hasEulogy = (d.eulogy && d.eulogy.status === "ready") || !!d.video;
       const full = d.access_level === "full_access" && d.profiles.length;
       $("subtitle").textContent = hasEulogy && full ? "A eulogy and memories shared with you by " + d.subject_name + "."
         : full ? "Memories shared with you by " + d.subject_name + "."
@@ -339,6 +367,7 @@
         : d.subject_name + " named you as their DayCasion Legacy Executor.";
       document.title = "In memory of " + d.subject_name;
       showEulogy(d);
+      showVideo(d);
       setupMaterials(d);
       setupEverything(d);
       $("expiry").textContent = "This private link is for you alone. It expires on " + longDate(d.link_expires_at) + "; you can request a new link any time.";
