@@ -185,6 +185,9 @@
     const box = $("video-eulogy"); box.classList.remove("hidden");
     const player = el("video", { controls: "", preload: "metadata", playsinline: "", "aria-label": "Video eulogy" });
     const note = el("p", { class: "err" });
+    // Some browsers can't play every format (for example MOV files outside Safari): the download always works.
+    player.addEventListener("error", () => { if (player.getAttribute("src")) { player.classList.add("hidden");
+      note.className = "muted"; note.id = "video-cant-play"; note.textContent = "This browser can't play this video format. Use Download video to watch it on your device."; } });
     call("eulogy_video").then((r) => { player.src = r.url; }).catch((err) => {
       if (err.code === "link_expired" || err.code === "invalid_link") return handle(err);
       note.textContent = "The video isn't available right now. Please refresh the page or try again later."; });
