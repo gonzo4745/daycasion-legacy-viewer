@@ -45,6 +45,8 @@
   ul.parts { list-style: none; padding: 0; margin: 10px 0; }
   ul.parts li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
   .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .dob select, .dob input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+  .dob input { width: 6.5em; }
   input[type=email] { width: 100%; max-width: 360px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
   .err { color: var(--err); }
   .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -101,6 +103,10 @@
     for (const k of kids) if (k) n.append(k);
     return n;
   };
+  // Executor email confirmation (the link in the introduction email): #confirm=<token>. Handled here, then stop.
+  const cm = location.hash.match(/(?:^#|&)confirm=([0-9a-f]{64})/);
+  if (cm) { history.replaceState(null, "", location.pathname + location.search); confirmView(cm[1]); return; }
+
   // The link's token is in the address fragment (never sent to any server log); keep it for this tab only.
   let token = "";
   const m = location.hash.match(/(?:^#|&)t=([0-9a-f]{64})/);
@@ -113,6 +119,48 @@
     if (!res.ok) { const e = new Error((data && data.error) || "unavailable"); e.code = (data && data.error) || "unavailable"; throw e; }
     return data;
   }
+  // The executor confirms this address is theirs and enters their date of birth, so a mistyped date recorded by the
+  // account owner is caught early. Only "matches / doesn't match" is recorded, never the date entered.
+  function confirmView(confirmToken) {
+    const RECOVER = "https://zwitjkrmzkvrektahuml.supabase.co/functions/v1/legacy-recover";
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const month = el("select", { "aria-label": "Month" }, el("option", { value: "", text: "Month" }), ...months.map((m, i) => el("option", { value: String(i + 1).padStart(2, "0"), text: m })));
+    const day = el("input", { type: "number", min: "1", max: "31", placeholder: "Day", "aria-label": "Day", inputmode: "numeric" });
+    const year = el("input", { type: "number", min: "1900", max: String(new Date().getFullYear()), placeholder: "Year", "aria-label": "Year", inputmode: "numeric" });
+    const note = el("p", { class: "muted", role: "alert", text: "" });
+    const b = el("button", { class: "primary", text: "Confirm", onclick: async () => {
+      const y = String(year.value).trim(), d = String(day.value).trim().padStart(2, "0");
+      if (!month.value || !/^\d{4}$/.test(y) || !/^\d{2}$/.test(d)) { note.textContent = "Please enter your full date of birth."; return; }
+      b.disabled = true; note.textContent = "Checking…";
+      let r = null;
+      try { const res = await fetch(RECOVER, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "confirm", token: confirmToken, date_of_birth: `${y}-${month.value}-${d}` }) }); r = await res.json(); } catch (_) { r = null; }
+      b.disabled = false;
+      const who = (r && r.name) || "the person who named you";
+      if (r && r.result === "confirmed" && r.dob === "matched") {
+        status(el("h2", { text: "Thank you, you're all set" }),
+          el("p", { text: `Your email address is confirmed, and your date of birth matches what ${who} recorded.` }),
+          el("p", { text: `Keep the Legacy Code ${who} gives you somewhere safe. If you ever lose it, open the DayCasion app, choose Legacy Executor Access, then "Forgot Legacy Code?".` }),
+          el("p", { class: "muted", text: "You can close this page." }));
+      } else if (r && r.result === "confirmed") {
+        note.textContent = `Your email address is confirmed. The date of birth you entered doesn't match what ${who} recorded, so ${who} will see a note in DayCasion to check it.` +
+          (r.tries_left > 0 ? " If you mistyped it, you can try again." : "");
+        if (!(r.tries_left > 0)) b.disabled = true;
+      } else if (r && r.result === "locked") {
+        note.textContent = "Too many tries. Your email address is confirmed; please ask the person who named you to check your date of birth in DayCasion.";
+        b.disabled = true;
+      } else if (r && r.result === "invalid") {
+        status(el("h2", { text: "This link has expired" }),
+          el("p", { text: "This confirmation link has expired or has already been used. If you need a new one, ask the person who named you to send the introduction email again from DayCasion." }));
+      } else {
+        note.textContent = "Something went wrong. Please try again in a moment.";
+      }
+    } });
+    status(el("h2", { text: "Confirm your email" }),
+      el("p", { text: "Thank you for confirming that this email address belongs to you. Please also enter your date of birth, so we can check the details recorded for you are right." }),
+      el("div", { class: "row dob" }, month, day, year), el("div", { class: "row", style: "margin-top:14px" }, b), note,
+      el("p", { class: "muted", text: "Nothing is shared with you, and no legacy process starts, when you confirm." }));
+  }
+
   function status(...nodes) { $("content").classList.add("hidden"); const s = $("status"); s.classList.remove("hidden"); s.replaceChildren(...nodes); }
   function longDate(iso) { try { return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); } catch (_) { return ""; } }
 
